@@ -32,6 +32,8 @@ class SharedCriticTorchRLModule(TorchRLModule, SharedCriticRLModule):
         batch: typing.Dict[str, Any],
         embeddings: Optional[Any] = None,
     ) -> TensorType:
+        print(batch['obs'].shape)
+        print(self.encoder)
         if embeddings is None:
             embeddings = self.encoder(batch)[ENCODER_OUT]
         vf_out = self.vf(embeddings)

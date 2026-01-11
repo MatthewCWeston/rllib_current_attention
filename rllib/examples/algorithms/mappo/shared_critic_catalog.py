@@ -1,4 +1,5 @@
 import gymnasium as gym
+import numpy as np
 
 from ray.rllib.core.models.base import Encoder, Model
 from ray.rllib.core.models.catalog import Catalog
@@ -8,6 +9,8 @@ from ray.rllib.core.models.configs import (
 from ray.rllib.utils import override
 from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
 
+import dataclasses
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 
 class SharedCriticCatalog(Catalog):
     def __init__(
@@ -23,19 +26,24 @@ class SharedCriticCatalog(Catalog):
             action_space: The action space for the Pi Head.
             model_config_dict: The model config to use.
         """
-        super().__init__(
-            observation_space=observation_space,
-            action_space=action_space,  # Base Catalog class checks for this.
-            model_config_dict=model_config_dict,
-        )
-        # We only want one encoder, so we use the base encoder config.
-        self.encoder_config = self._encoder_config
-        # Adjust the input and output dimensions of the encoder.
+        if dataclasses.is_dataclass(model_config_dict):
+            model_config_dict = dataclasses.asdict(model_config_dict)
+        default_config = dataclasses.asdict(DefaultModelConfig())
+        self._model_config_dict = default_config | model_config_dict
         observation_spaces = self._model_config_dict["observation_spaces"]
         obs_size = 0
+        low, high = [], []
         for agent, obs in observation_spaces.items():
-            obs_size += obs.shape[0]  # Assume 1D observations
-        self.encoder_config.input_dims = (obs_size,)
+            obs_size += obs.shape[0]  # Assume 1D Box observations
+            low.append(obs.low)
+            high.append(obs.high)
+        # Join observation spaces together
+        self.observation_space = gym.spaces.Box(np.hstack(low), np.hstack(high), (obs_size,),)
+        self.action_space = action_space
+        self._latent_dims = None
+        self._determine_components_hook()
+        # We only want one encoder, so we use the base encoder config.
+        self.encoder_config = self._encoder_config
         # Value head architecture
         self.vf_head_hiddens = self._model_config_dict["head_fcnet_hiddens"]
         self.vf_head_activation = self._model_config_dict["head_fcnet_activation"]

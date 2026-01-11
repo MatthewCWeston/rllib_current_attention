@@ -93,16 +93,22 @@ if __name__ == "__main__":
 
     # An agent for each of our policies, and a single shared critic
     env_instantiated = get_env({})  # neccessary for non-agent modules
+    from ray.rllib.algorithms.ppo.torch.default_ppo_torch_rl_module import DefaultPPOTorchRLModule
     model_config = DefaultModelConfig(
         use_lstm=args.use_lstm,
     )
-    specs = {p: RLModuleSpec(model_config=model_config) for p in policies}
+    specs = {p: RLModuleSpec(
+        model_config=model_config
+    ) for p in policies}
     specs[SHARED_CRITIC_ID] = RLModuleSpec(
         module_class=SharedCriticTorchRLModule,
         observation_space=env_instantiated.observation_space[policies[0]],
         action_space=env_instantiated.action_space[policies[0]],
         learner_only=True,  # Only build on learner
-        model_config={"observation_spaces": env_instantiated.observation_space},
+        model_config={
+            "observation_spaces": env_instantiated.observation_space,
+            "use_lstm": args.use_lstm,
+        },
     )
 
     base_config = (
@@ -117,6 +123,9 @@ if __name__ == "__main__":
             rl_module_spec=MultiRLModuleSpec(
                 rl_module_specs=specs,
             ),
+        )
+        .training(
+            train_batch_size=256 # temp
         )
     )
 

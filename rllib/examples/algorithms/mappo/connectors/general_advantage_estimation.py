@@ -54,8 +54,6 @@ class MAPPOGAEConnector(ConnectorV2):
         sa_episodes_list = list(
             self.single_agent_episode_iterator(episodes, agents_that_stepped_only=False)
         )
-        # Perform the value net's forward pass.
-        critic_batch = {}
         # Concatenate all agent observations in batch, using a fixed order
         obs_mids = [
             k
@@ -63,12 +61,32 @@ class MAPPOGAEConnector(ConnectorV2):
             if (Columns.OBS in batch[k])
             and (not isinstance(rl_module[k], SelfSupervisedLossAPI))
         ]
+        # Initialize critic batch for stateful modules
+        if rl_module.is_stateful():
+            seq_lens = batch[obs_mids[0]][Columns.SEQ_LENS]
+            batch_size, device = seq_lens.shape[0], seq_lens.device
+            critic = rl_module[SHARED_CRITIC_ID]
+            initial_state = critic.get_initial_state()
+            initial_state = {k: v.unsqueeze(0).repeat(batch_size,1,1).to(device)
+                for k, v in initial_state.items()}
+            critic_batch = {
+                Columns.STATE_IN: initial_state,
+                Columns.SEQ_LENS: seq_lens,
+            }
+        else:
+            critic_batch = {}
+        # TODO: Handle non-stateful by skipping the above
+        #
         critic_batch[Columns.OBS] = torch.cat(
             [batch[k][Columns.OBS] for k in obs_mids], dim=-1
         )
         # Compute value predictions
         vf_preds = rl_module[SHARED_CRITIC_ID].compute_values(critic_batch)
         vf_preds = {mid: vf_preds[..., i] for i, mid in enumerate(obs_mids)}
+        # TODO: Convert state_out into state_in
+        if rl_module.is_stateful():
+            print(critic_batch[Columns.STATE_OUT].shape)
+            #critic_batch[Columns.STATE_IN] = critic_batch[Columns.STATE_OUT]
         # Loop through all modules and perform each one's GAE computation.
         for module_id, module_vf_preds in vf_preds.items():
             module = rl_module[module_id]
