@@ -47,6 +47,7 @@ objective and thus differences in the rewards can be attributed to weight initia
 
 from pettingzoo.sisl import waterworld_v4
 
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
@@ -68,6 +69,11 @@ parser = add_rllib_example_script_args(
     default_timesteps=1000000,
     default_reward=0.0,
 )
+parser.add_argument(
+    "--use-lstm",
+    action="store_true",
+    help="Whether to use LSTM encoders for the agents' policies.",
+)
 
 
 if __name__ == "__main__":
@@ -87,7 +93,10 @@ if __name__ == "__main__":
 
     # An agent for each of our policies, and a single shared critic
     env_instantiated = get_env({})  # neccessary for non-agent modules
-    specs = {p: RLModuleSpec() for p in policies}
+    model_config = DefaultModelConfig(
+        use_lstm=args.use_lstm,
+    )
+    specs = {p: RLModuleSpec(model_config=model_config) for p in policies}
     specs[SHARED_CRITIC_ID] = RLModuleSpec(
         module_class=SharedCriticTorchRLModule,
         observation_space=env_instantiated.observation_space[policies[0]],
